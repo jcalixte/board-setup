@@ -1,0 +1,70 @@
+{
+  "deck": {
+    "rclone_remote": "gdrive"
+  },
+  "print": {
+    "printer": null,
+    "orientation": "landscape",
+    "version_counts": { "with-examples": 1, "template": 1, "generic": 5 },
+    "lp_options": ["fit-to-page", "position=center", "sides=one-sided"]
+  },
+  "papers": [
+    {
+      "id": "questionnaire",
+      "pillar": "Value for the Customer",
+      "size": "A4",
+      "variants": {
+        "template": "Questionnaire — template",
+        "generic": "Questionnaire"
+      }
+    },
+    {
+      "id": "product-radar",
+      "pillar": "Value for the Customer",
+      "size": "A4",
+      "variants": {
+        "template": "Product Radar — template",
+        "generic": "Product Radar"
+      }
+    },
+    {
+      "id": "user-story-takt",
+      "pillar": "Right-first-time and Just-in-time",
+      "size": "A4",
+      "variants": {
+        "template": "User Story Takt — template",
+        "generic": "User Story Takt"
+      }
+    },
+    {
+      "id": "defect-visualization",
+      "pillar": "Right-first-time and Just-in-time",
+      "size": "A4",
+      "variants": {
+        "template": "Defect Visualization — template",
+        "generic": "Defect Visualization"
+      }
+    },
+    {
+      "id": "tech-working-conditions",
+      "pillar": "Tech-enabled Network of Teams",
+      "size": "A3",
+      "variants": {
+        "with-examples": "Tech Working Conditions — with examples",
+        "generic": "Tech Working Conditions"
+      }
+    },
+    {
+      "id": "dantotsu",
+      "pillar": "Building a Learning Organization",
+      "size": "A3",
+      "variants": { "generic": "Dantotsu and Problem Solving" }
+    },
+    {
+      "id": "weak-point-management",
+      "pillar": "Building a Learning Organization",
+      "size": "A3",
+      "variants": { "generic": "Weak Point Management" }
+    }
+  ]
+}

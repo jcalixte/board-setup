@@ -1,0 +1,6 @@
+# Internal glossary — kept local, not published
+CONTEXT.md
+
+__pycache__/
+*.pyc
+.DS_Store

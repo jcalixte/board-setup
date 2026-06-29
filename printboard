@@ -1,0 +1,437 @@
+#!/usr/bin/env python3
+"""printboard — print the Enabler board's papers at the right size, count, and version.
+
+The papers live as slides in one Google Slides deck (the source of truth others edit).
+On each run we export that deck to a single PDF, find each paper's slide *by its title*,
+and send it to the printer at the size and number of copies declared in manifest.json.
+
+  printboard first-time            # whole board, first-time variant where it exists
+  printboard generic               # whole board, generic variant
+  printboard generic tech-working-conditions   # just one paper
+  printboard first-time --count 3 --dry-run
+  printboard generic --from-pdf "~/Downloads/deck.pdf"   # skip export, use a local PDF
+  printboard --list-titles --from-pdf "~/Downloads/deck.pdf"   # debug: page -> title
+
+Version is required and never guessed (single-version papers print in either mode).
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent          # installed: libexec; in repo: the repo dir
+
+
+def resolve_manifest(cli_arg: str | None) -> Path:
+    """Find manifest.json: --manifest > $PRINTBOARD_MANIFEST > ~/.config > bundled."""
+    candidates = []
+    if cli_arg:
+        candidates.append(Path(cli_arg).expanduser())
+    if os.environ.get("PRINTBOARD_MANIFEST"):
+        candidates.append(Path(os.environ["PRINTBOARD_MANIFEST"]).expanduser())
+    candidates.append(Path.home() / ".config" / "printboard" / "manifest.json")
+    candidates.append(HERE / "manifest.json")     # bundled default
+    for c in candidates:
+        if c.exists():
+            return c
+    die("no manifest.json found (looked at --manifest, $PRINTBOARD_MANIFEST, "
+        "~/.config/printboard/manifest.json, and the bundled copy).")
+
+
+CONFIG_PATH = Path.home() / ".config" / "printboard" / "config.json"
+
+
+def load_config() -> dict:
+    """Per-user, per-machine settings (deck id, remote, printer) — never shipped."""
+    try:
+        return json.loads(CONFIG_PATH.read_text())
+    except FileNotFoundError:
+        return {}
+    except json.JSONDecodeError:
+        die(f"{CONFIG_PATH} is not valid JSON.")
+
+
+def effective_deck(manifest: dict, config: dict) -> dict:
+    """Deck identity comes from local config (the doc_id is private); the manifest
+    only carries a default remote name."""
+    deck = dict(manifest.get("deck", {}))
+    deck["rclone_remote"] = config.get("rclone_remote") or deck.get("rclone_remote") or "gdrive"
+    if config.get("doc_id"):
+        deck["doc_id"] = config["doc_id"]
+    return deck
+
+
+def extract_doc_id(raw: str) -> str | None:
+    """Accept a Google Slides URL or a bare file id."""
+    raw = raw.strip()
+    m = re.search(r"/d/([A-Za-z0-9_-]+)", raw)
+    if m:
+        return m.group(1)
+    return raw if re.fullmatch(r"[A-Za-z0-9_-]{20,}", raw) else None
+
+
+def die(msg: str, code: int = 1):
+    print(f"printboard: {msg}", file=sys.stderr)
+    sys.exit(code)
+
+
+def warn(msg: str):
+    print(f"  ⚠️  {msg}", file=sys.stderr)
+
+
+def normalize(s: str) -> str:
+    """Casefold, treat all dashes/punctuation as spaces, collapse whitespace.
+
+    So 'Questionnaire — template', 'Questionnaire - template' and
+    'Questionnaire template' all compare equal — the separator never matters.
+    """
+    s = re.sub(r"[^\w\s]", " ", s, flags=re.UNICODE)   # dashes, punctuation, badges → space
+    s = re.sub(r"\s+", " ", s)
+    return s.strip().casefold()
+
+
+# ---------- get the deck as a PDF ----------
+
+def export_deck(deck: dict, dest: Path) -> Path:
+    """Export the live Slides deck to PDF via rclone.
+
+    Addressed by doc_id (`rclone backend copyid`), so the remote's root or chosen
+    Shared Drive is irrelevant — only that the account can see the deck.
+    """
+    if not shutil.which("rclone"):
+        die("rclone is not installed — run `printboard setup` (or `brew install rclone`). "
+            "Or pass --from-pdf <file> to print from a local export.")
+    remote = deck.get("rclone_remote")
+    doc_id = deck.get("doc_id")
+    if not (remote and doc_id):
+        die("no deck configured — run `printboard setup` to save the deck id.")
+    outdir = dest / "export"
+    outdir.mkdir(parents=True, exist_ok=True)
+    cmd = ["rclone", "backend", "copyid", f"{remote}:", doc_id,
+           f"{outdir}/", "--drive-export-formats", "pdf"]
+    print("→ exporting live deck from Drive…")
+    res = subprocess.run(cmd)
+    if res.returncode != 0:
+        die("rclone export failed — check auth with `printboard doctor`.")
+    pdfs = sorted(outdir.glob("*.pdf"))
+    if not pdfs:
+        die("rclone produced no PDF — is deck.doc_id correct?")
+    return pdfs[0]
+
+
+# ---------- read the PDF ----------
+
+def page_texts(pdf: Path) -> list[str]:
+    """Return the text of each page (split on form-feed from a single pdftotext pass)."""
+    if not shutil.which("pdftotext"):
+        die("pdftotext not found — install poppler (brew install poppler).")
+    res = subprocess.run(["pdftotext", "-layout", str(pdf), "-"],
+                         capture_output=True, text=True)
+    if res.returncode != 0:
+        die(f"pdftotext failed: {res.stderr.strip()}")
+    pages = res.stdout.split("\x0c")
+    # pdftotext emits a trailing empty chunk after the last form-feed
+    if pages and pages[-1].strip() == "":
+        pages.pop()
+    return pages
+
+
+def page_lines(text: str) -> list[str]:
+    return [ln.strip() for ln in text.splitlines() if ln.strip()]
+
+
+def find_page(title: str, pages: list[str]) -> tuple[list[int], list[int]]:
+    """Return (strong, fuzzy) 1-based page lists for a title.
+
+    strong = a standalone line on the page equals the title (the dedicated paper slide).
+    fuzzy  = the title only appears as a substring of some line (likely a list/spec slide).
+    """
+    target = normalize(title)
+    strong, fuzzy = [], []
+    for i, text in enumerate(pages, start=1):
+        lines = page_lines(text)
+        head = normalize(" ".join(lines[:3]))   # title region: a version word on a 2nd line still counts
+        full = normalize(" ".join(lines))
+        if head == target or head.startswith(target + " "):
+            strong.append(i)
+        elif target in full:                     # appears elsewhere → likely a list/spec slide
+            fuzzy.append(i)
+    return strong, fuzzy
+
+
+def assign_paper_pages(paper: dict, pages: list[str]) -> dict:
+    """Resolve each of a paper's versions to one page.
+
+    A page matched by several of the paper's variant titles is assigned to the most
+    specific (longest) one — so `<Paper> - template` claims its slide and the bare
+    `<Paper>` slide falls to the generic variant, without stamping "generic" on it.
+    Returns {version: {title, page, status, pages}} where status is
+    ok | ambiguous | fuzzy | none. No warnings here — the caller reports per request.
+    """
+    titles = {v: (s["title"] if isinstance(s, dict) else s)
+              for v, s in paper.get("variants", {}).items()}
+    matches = {v: find_page(t, pages) for v, t in titles.items()}   # v -> (strong, fuzzy)
+    owner = {}
+    for v in sorted(titles, key=lambda v: len(normalize(titles[v])), reverse=True):
+        for pg in matches[v][0]:
+            owner.setdefault(pg, v)
+    info = {}
+    for v, t in titles.items():
+        strong, fuzzy = matches[v]
+        owned = [pg for pg in strong if owner.get(pg) == v]
+        if len(owned) == 1:
+            info[v] = {"title": t, "page": owned[0], "status": "ok", "pages": owned}
+        elif len(owned) > 1:
+            info[v] = {"title": t, "page": None, "status": "ambiguous", "pages": owned}
+        elif fuzzy:
+            info[v] = {"title": t, "page": None, "status": "fuzzy", "pages": fuzzy}
+        else:
+            info[v] = {"title": t, "page": None, "status": "none", "pages": []}
+    return info
+
+
+# ---------- printing ----------
+
+def lp_command(pdf: Path, page: int, size: str, count: int, orientation: str,
+               printer: str | None, lp_options: list[str]) -> list[str]:
+    cmd = ["lp"]
+    if printer:
+        cmd += ["-d", printer]
+    cmd += ["-n", str(count), "-o", f"media={size}", "-o", f"page-ranges={page}"]
+    if orientation == "landscape":
+        cmd += ["-o", "landscape"]
+    for opt in lp_options:
+        cmd += ["-o", opt]
+    cmd.append(str(pdf))
+    return cmd
+
+
+def cmd_doctor(argv: list[str]) -> int:
+    """Check the environment can export the deck and print."""
+    ap = argparse.ArgumentParser(prog="printboard doctor")
+    ap.add_argument("--manifest", default=None)
+    args = ap.parse_args(argv)
+    manifest = json.loads(resolve_manifest(args.manifest).read_text())
+    deck = effective_deck(manifest, load_config())
+    remote = deck.get("rclone_remote", "gdrive")
+    ok = True
+
+    def check(label, good, hint=""):
+        nonlocal ok
+        print(f"  {'✓' if good else '✗'} {label}")
+        if not good and hint:
+            print(f"      → {hint}")
+        ok = ok and good
+
+    print("printboard doctor\n")
+    check("rclone installed", bool(shutil.which("rclone")),
+          "brew install rclone, then `printboard setup`")
+    check("pdftotext installed", bool(shutil.which("pdftotext")), "brew install poppler")
+    check("lp installed", bool(shutil.which("lp")), "CUPS ships with macOS")
+
+    remote_ok = False
+    if shutil.which("rclone"):
+        res = subprocess.run(["rclone", "listremotes"], capture_output=True, text=True)
+        remote_ok = f"{remote}:" in res.stdout.split()
+    check(f"rclone remote '{remote}' configured", remote_ok, "run `printboard setup`")
+    check("deck id configured (local)", bool(deck.get("doc_id")),
+          "run `printboard setup` to save the deck id locally")
+
+    res = subprocess.run(["lpstat", "-d"], capture_output=True, text=True)
+    print(f"  • {res.stdout.strip() or 'no default printer (set one with lpoptions -d <printer>)'}")
+
+    if remote_ok and deck.get("doc_id"):
+        tmp = Path(tempfile.mkdtemp(prefix="printboard-doctor-"))
+        try:
+            pages = page_texts(export_deck(deck, tmp))
+            check(f"deck exports from Drive ({len(pages)} pages)", True)
+        except SystemExit:
+            check("deck exports from Drive", False, "auth/scope issue — re-run `printboard setup`")
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    print(f"\n{'All good.' if ok else 'Some checks failed — see hints above.'}")
+    return 0 if ok else 1
+
+
+def cmd_setup(argv: list[str]) -> int:
+    """Authorise rclone and save the (private) deck id to the local config."""
+    ap = argparse.ArgumentParser(prog="printboard setup")
+    ap.add_argument("--manifest", default=None)
+    ap.add_argument("--deck", help="Google Slides URL or file id of the deck")
+    args = ap.parse_args(argv)
+    manifest = json.loads(resolve_manifest(args.manifest).read_text())
+    remote = effective_deck(manifest, load_config())["rclone_remote"]
+
+    if not shutil.which("rclone"):
+        die("rclone is not installed. Install it first:  brew install rclone")
+
+    print(f"Setting up the '{remote}' rclone remote (read-only Google Drive).")
+    print("A browser window opens — log in and click Allow.")
+    print("You do NOT need to pick a Shared Drive: printboard finds the deck by id.\n")
+    res = subprocess.run(["rclone", "config", "create", remote, "drive",
+                          "scope=drive.readonly"])
+    if res.returncode != 0:
+        die("rclone setup failed. If your org blocked the app, create your own OAuth "
+            "client in Google Cloud Console and re-run setup (see README.md).")
+
+    raw = args.deck
+    if not raw:
+        if not sys.stdin.isatty():
+            die("pass the deck with --deck '<Slides URL or id>' (non-interactive).")
+        raw = input("\nPaste the Google Slides URL or file id of the deck: ")
+    doc_id = extract_doc_id(raw or "")
+    if not doc_id:
+        die("couldn't read a deck id from that — expected a Slides URL or a file id.")
+
+    cfg = load_config()
+    cfg["doc_id"] = doc_id
+    cfg.setdefault("rclone_remote", remote)
+    CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    CONFIG_PATH.write_text(json.dumps(cfg, indent=2) + "\n")
+    print(f"\n✓ remote configured and deck id saved to {CONFIG_PATH}. Verifying…\n")
+    return cmd_doctor(["--manifest", args.manifest] if args.manifest else [])
+
+
+def main():
+    argv = sys.argv[1:]
+    if argv and argv[0] == "setup":
+        sys.exit(cmd_setup(argv[1:]))
+    if argv and argv[0] == "doctor":
+        sys.exit(cmd_doctor(argv[1:]))
+
+    ap = argparse.ArgumentParser(
+        prog="printboard", add_help=True,
+        description="Print the Enabler board's papers (also: `printboard setup`, `printboard doctor`).",
+        epilog="setup: configure rclone auth.  doctor: check deps + deck export.")
+    ap.add_argument("selectors", nargs="*",
+                    help="optional version and/or paper id (e.g. `generic`, "
+                         "`tech-working-conditions`, or both). No version → all variants (activation).")
+    ap.add_argument("--count", type=int, help="override copies for the selected variant(s)")
+    ap.add_argument("--printer", help="printer name (default: manifest, else system default)")
+    ap.add_argument("--from-pdf", help="use this local PDF instead of exporting from Drive")
+    ap.add_argument("--manifest", default=None, help="path to manifest.json (overrides the default lookup)")
+    ap.add_argument("--dry-run", action="store_true", help="print the lp commands, don't run them")
+    ap.add_argument("--force", action="store_true",
+                    help="print even on ambiguous/fuzzy title matches (uses the first page)")
+    ap.add_argument("--list-titles", action="store_true",
+                    help="dump page → first line for every page (debug the deck contract)")
+    args = ap.parse_args()
+
+    manifest = json.loads(resolve_manifest(args.manifest).read_text())
+    config = load_config()
+    deck = effective_deck(manifest, config)
+    pcfg = manifest.get("print", {})
+    printer = args.printer or config.get("printer") or pcfg.get("printer")
+    lp_options = pcfg.get("lp_options", [])
+    default_orientation = pcfg.get("orientation", "portrait")
+    version_counts = pcfg.get("version_counts", {})
+    papers = manifest.get("papers", [])
+
+    version_set = set(version_counts) | {v for p in papers for v in p.get("variants", {})}
+    paper_ids = {p["id"] for p in papers}
+    chosen_version = chosen_paper = None
+    for tok in args.selectors:
+        if tok in version_set:
+            chosen_version = tok
+        elif tok in paper_ids:
+            chosen_paper = tok
+        else:
+            die(f"unknown selector '{tok}'. versions: {sorted(version_set)} | "
+                f"papers: {sorted(paper_ids)}")
+
+    tmp = Path(tempfile.mkdtemp(prefix="printboard-"))
+    try:
+        if args.from_pdf:
+            pdf = Path(os.path.expanduser(args.from_pdf))
+            if not pdf.exists():
+                die(f"--from-pdf not found: {pdf}")
+        else:
+            pdf = export_deck(deck, tmp)
+
+        pages = page_texts(pdf)
+
+        if args.list_titles:
+            print(f"# {len(pages)} pages in {pdf.name}\n")
+            for i, text in enumerate(pages, start=1):
+                lines = page_lines(text)
+                print(f"{i:>3}: {lines[0] if lines else '(no text)'}")
+            return
+
+        # Build the print plan: (paper, version, title, count). No version selected
+        # → every variant of every (selected) paper = activation.
+        selected_papers = [p for p in papers
+                           if chosen_paper is None or p["id"] == chosen_paper]
+        plan = []
+        for p in selected_papers:
+            variants = p.get("variants", {})
+            for v in ([chosen_version] if chosen_version else list(variants)):
+                spec = variants.get(v)
+                if not spec:
+                    if chosen_version:
+                        warn(f"{p['id']}: no '{v}' variant — skipped.")
+                    continue
+                if isinstance(spec, dict):
+                    title, count = spec.get("title"), spec.get("count", version_counts.get(v, 1))
+                else:
+                    title, count = spec, version_counts.get(v, 1)
+                if args.count is not None:
+                    count = args.count
+                plan.append((p, v, title, count))
+
+        scope = " ".join(x for x in (chosen_version, chosen_paper) if x) or "activation (all variants)"
+        print(f"Printing the board — {scope}{'  [dry run]' if args.dry_run else ''}\n")
+        if not plan:
+            die("nothing to print for that selection.")
+
+        page_cache = {}
+        printed, skipped = 0, 0
+        for p, v, title, count in plan:
+            pid = p["id"]
+            info = page_cache.setdefault(pid, assign_paper_pages(p, pages))[v]
+            status, page = info["status"], info["page"]
+            if status != "ok":
+                if status in ("ambiguous", "fuzzy") and args.force:
+                    page = info["pages"][0]
+                    warn(f'{pid}/{v}: {status} match for "{title}" {info["pages"]} — using {page} (--force)')
+                elif status == "ambiguous":
+                    warn(f'{pid}/{v}: "{title}" matches slides {info["pages"]} — make it unique (or --force). Skipped.')
+                    skipped += 1
+                    continue
+                elif status == "fuzzy":
+                    warn(f'{pid}/{v}: "{title}" only appears inside a slide {info["pages"]}, not as its title. Skipped.')
+                    skipped += 1
+                    continue
+                else:
+                    warn(f'{pid}/{v}: title "{title}" not found in deck — skipped.')
+                    skipped += 1
+                    continue
+            orientation = p.get("orientation", default_orientation)
+            cmd = lp_command(pdf, page, p["size"], count, orientation, printer, lp_options)
+            label = f"{p['id']:<24} {v:<13} {p['size']} {orientation:<9} ×{count}  p{page}  «{title}»"
+            if args.dry_run:
+                print(f"  {label}\n      {' '.join(cmd)}")
+            else:
+                res = subprocess.run(cmd)
+                print(f"  {'✓' if res.returncode == 0 else '✗'} {label}")
+                if res.returncode != 0:
+                    warn(f"{p['id']}: lp exited {res.returncode}")
+            printed += 1
+
+        print(f"\n{printed} variant(s) {'planned' if args.dry_run else 'sent'}"
+              f"{f'; {skipped} skipped' if skipped else ''}.")
+        if skipped and not args.force:
+            print("  (skipped variants need a unique, exact slide title — see the warnings above.)")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+if __name__ == "__main__":
+    main()
