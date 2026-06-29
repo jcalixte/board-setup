@@ -199,14 +199,63 @@ def assign_paper_pages(paper: dict, pages: list[str]) -> dict:
 
 # ---------- printing ----------
 
-def lp_command(pdf: Path, page: int, size: str, count: int, orientation: str,
+PORTRAIT_PT = {"A4": (595, 842), "A3": (842, 1191)}   # width, height in points
+
+
+def media_points(size: str, orientation: str) -> tuple[int, int]:
+    w, h = PORTRAIT_PT[size]
+    return (h, w) if orientation == "landscape" else (w, h)
+
+
+def scale_page(pdf: Path, page: int, size: str, orientation: str,
+               dest_dir: Path, margin_mm: float = 0.0) -> Path:
+    """Size one page to its target media (vector, via ghostscript), so it prints
+    full-size on any printer regardless of the driver's fit-to-page behaviour.
+
+    The deck slides are ~A4-sized and printers won't scale them up to A3, so we do it
+    here. With margin_mm > 0 the content is inset by that margin (centred); with 0 it
+    fills the sheet edge-to-edge (keep content off the edges in the slide design).
+    """
+    if not shutil.which("gs"):
+        die("ghostscript not found — `brew install ghostscript` (needed to size pages to A3/A4).")
+    if size not in PORTRAIT_PT:
+        die(f"unknown size '{size}' (expected A3 or A4).")
+    w, h = media_points(size, orientation)
+    m = round(margin_mm * 72 / 25.4)
+    out = dest_dir / f"sized-{page}-{size}.pdf"
+
+    def gs(args):
+        return subprocess.run(["gs", "-q", "-sDEVICE=pdfwrite", "-dFIXEDMEDIA",
+                               "-dAutoRotatePages=/None", *args], capture_output=True, text=True)
+
+    if m <= 0:
+        # full bleed: fit content to the whole media in one pass
+        p = gs(["-o", str(out), f"-dDEVICEWIDTHPOINTS={w}", f"-dDEVICEHEIGHTPOINTS={h}",
+                "-dPDFFitPage", f"-dFirstPage={page}", f"-dLastPage={page}", str(pdf)])
+        if not out.exists():
+            die(f"ghostscript failed to size page {page}: {p.stderr.strip()[:200]}")
+        return out
+
+    # margin: fit content into the inner box, then centre that box on the full media
+    bw, bh = w - 2 * m, h - 2 * m
+    box = dest_dir / f"box-{page}-{size}.pdf"
+    p1 = gs(["-o", str(box), f"-dDEVICEWIDTHPOINTS={bw}", f"-dDEVICEHEIGHTPOINTS={bh}",
+             "-dPDFFitPage", f"-dFirstPage={page}", f"-dLastPage={page}", str(pdf)])
+    p2 = (gs(["-o", str(out), f"-dDEVICEWIDTHPOINTS={w}", f"-dDEVICEHEIGHTPOINTS={h}",
+              "-c", f"<</PageOffset [{m} {m}]>> setpagedevice", "-f", str(box)])
+          if box.exists() else p1)
+    if not out.exists():
+        die(f"ghostscript failed to size page {page}: {(p2.stderr or p1.stderr or '').strip()[:200]}")
+    return out
+
+
+def lp_command(pdf: Path, count: int, size: str,
                printer: str | None, lp_options: list[str]) -> list[str]:
+    """Print an already-correctly-sized PDF at 100% (no CUPS scaling)."""
     cmd = ["lp"]
     if printer:
         cmd += ["-d", printer]
-    cmd += ["-n", str(count), "-o", f"media={size}", "-o", f"page-ranges={page}"]
-    if orientation == "landscape":
-        cmd += ["-o", "landscape"]
+    cmd += ["-n", str(count), "-o", f"media={size}"]
     for opt in lp_options:
         cmd += ["-o", opt]
     cmd.append(str(pdf))
@@ -234,6 +283,7 @@ def cmd_doctor(argv: list[str]) -> int:
     check("rclone installed", bool(shutil.which("rclone")),
           "brew install rclone, then `printboard setup`")
     check("pdftotext installed", bool(shutil.which("pdftotext")), "brew install poppler")
+    check("ghostscript installed", bool(shutil.which("gs")), "brew install ghostscript")
     check("lp installed", bool(shutil.which("lp")), "CUPS ships with macOS")
 
     remote_ok = False
@@ -332,6 +382,7 @@ def main():
     printer = args.printer or config.get("printer") or pcfg.get("printer")
     lp_options = pcfg.get("lp_options", [])
     default_orientation = pcfg.get("orientation", "portrait")
+    safe_margin = pcfg.get("safe_margin_mm", 0.0)
     version_counts = pcfg.get("version_counts", {})
     papers = manifest.get("papers", [])
 
@@ -414,15 +465,19 @@ def main():
                     skipped += 1
                     continue
             orientation = p.get("orientation", default_orientation)
-            cmd = lp_command(pdf, page, p["size"], count, orientation, printer, lp_options)
-            label = f"{p['id']:<24} {v:<13} {p['size']} {orientation:<9} ×{count}  p{page}  «{title}»"
+            size = p["size"]
+            label = f"{pid:<24} {v:<13} {size} {orientation:<9} ×{count}  p{page}  «{title}»"
             if args.dry_run:
-                print(f"  {label}\n      {' '.join(cmd)}")
-            else:
-                res = subprocess.run(cmd)
-                print(f"  {'✓' if res.returncode == 0 else '✗'} {label}")
-                if res.returncode != 0:
-                    warn(f"{p['id']}: lp exited {res.returncode}")
+                print(f"  {label}\n      gs: size page {page} → {size} {orientation};  "
+                      f"lp -n {count} -o media={size}")
+                printed += 1
+                continue
+            sized = scale_page(pdf, page, size, orientation, tmp, safe_margin)
+            cmd = lp_command(sized, count, size, printer, lp_options)
+            res = subprocess.run(cmd)
+            print(f"  {'✓' if res.returncode == 0 else '✗'} {label}")
+            if res.returncode != 0:
+                warn(f"{pid}: lp exited {res.returncode}")
             printed += 1
 
         print(f"\n{printed} variant(s) {'planned' if args.dry_run else 'sent'}"

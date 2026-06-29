@@ -5,8 +5,9 @@
   "print": {
     "printer": null,
     "orientation": "landscape",
+    "safe_margin_mm": 0,
     "version_counts": { "with-examples": 1, "template": 1, "generic": 5 },
-    "lp_options": ["fit-to-page", "position=center", "sides=one-sided"]
+    "lp_options": ["sides=one-sided"]
   },
   "papers": [
     {

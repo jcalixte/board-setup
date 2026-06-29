@@ -62,9 +62,9 @@ titles, and pillar per paper:
 ```jsonc
 {
   "deck":  { "rclone_remote": "gdrive" },        // the private deck id lives in local config, not here
-  "print": { "printer": null, "orientation": "landscape",
+  "print": { "printer": null, "orientation": "landscape", "safe_margin_mm": 0,
              "version_counts": { "with-examples": 1, "template": 1, "generic": 5 },
-             "lp_options": ["fit-to-page", "position=center", "sides=one-sided"] },
+             "lp_options": ["sides=one-sided"] },
   "papers": [
     { "id": "tech-working-conditions", "pillar": "Tech-enabled Network of Teams", "size": "A3",
       "variants": { "with-examples": "Tech Working Conditions — with examples",
@@ -77,6 +77,11 @@ Counts come from `version_counts`; override one variant with an object:
 `"generic": { "title": "…", "count": 3 }`. A variant whose title is the bare paper
 name matches the unlabelled (blank) slide — the tool gives each contested page to the
 most specific title, so `… - template` wins its slide and the bare one falls to generic.
+
+Each page is **scaled to its exact A3/A4 size** (vector, via ghostscript) before
+printing, so it fills the sheet on any printer regardless of the driver's fit-to-page
+behaviour. `safe_margin_mm` insets the content (0 = full bleed; keep content off the
+edges in the slide design, or set e.g. 6 to avoid the printer's unprintable border).
 
 The **deck id is not stored here** — it's private, kept per-machine in
 `~/.config/printboard/config.json` (written by `printboard setup`), so it never ships
