@@ -29,12 +29,12 @@
       }
     },
     {
-      "id": "user-story-takt",
+      "id": "takt",
       "pillar": "Right-first-time and Just-in-time",
       "size": "A4",
       "variants": {
-        "template": "User Story Takt — template",
-        "generic": "User Story Takt"
+        "template": "Takt — template",
+        "generic": "Takt"
       }
     },
     {
