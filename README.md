@@ -31,8 +31,10 @@ printboard doctor                     # check deps, auth, and that the deck expo
   (`printboard generic`) and/or a paper id to target one (`printboard generic questionnaire`).
   Order doesn't matter — each token is recognised as a version or a paper.
 - Versions are **`with-examples`**, **`template`**, **`generic`** — read from the slide title.
-- The default printer is whatever `lp` uses (set it with `lpoptions -d <printer>`);
-  it must support A3 + A4. `--printer` overrides per run.
+- The **printer** (must support A3 + A4) is resolved in this order: `--printer <name>`
+  (per run) → `"printer"` in `~/.config/printboard/config.json` (persistent, printboard
+  only) → `print.printer` in the manifest → the system default `lp` uses (set it with
+  `lpoptions -d <printer>`). `printboard doctor` shows the one in effect.
 
 ## The deck ↔ tool contract
 
