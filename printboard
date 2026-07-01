@@ -9,6 +9,7 @@ and send it to the printer at the size and number of copies declared in manifest
   printboard generic               # whole board, generic variant
   printboard generic tech-working-conditions   # just one paper
   printboard first-time --count 3 --dry-run
+  printboard generic --to-pdf "~/Downloads/board.pdf"    # export a PDF instead of printing
   printboard generic --from-pdf "~/Downloads/deck.pdf"   # skip export, use a local PDF
   printboard --list-titles --from-pdf "~/Downloads/deck.pdf"   # debug: page -> title
 
@@ -262,6 +263,19 @@ def lp_command(pdf: Path, count: int, size: str,
     return cmd
 
 
+def merge_pdfs(pages: list[Path], dest: Path) -> None:
+    """Concatenate already-sized pages into one PDF, keeping each page's A3/A4 media
+    (no -dFIXEDMEDIA here, so ghostscript preserves per-page sizes)."""
+    if not shutil.which("gs"):
+        die("ghostscript not found — `brew install ghostscript` (needed to build the PDF).")
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    res = subprocess.run(["gs", "-q", "-dNOPAUSE", "-dBATCH", "-sDEVICE=pdfwrite",
+                          "-dAutoRotatePages=/None", f"-sOutputFile={dest}",
+                          *[str(p) for p in pages]], capture_output=True, text=True)
+    if not dest.exists():
+        die(f"ghostscript failed to write {dest}: {res.stderr.strip()[:200]}")
+
+
 def cmd_doctor(argv: list[str]) -> int:
     """Check the environment can export the deck and print."""
     ap = argparse.ArgumentParser(prog="printboard doctor")
@@ -366,6 +380,9 @@ def main():
                          "`tech-working-conditions`, or both). No version → all variants (activation).")
     ap.add_argument("--count", type=int, help="override copies for the selected variant(s)")
     ap.add_argument("--printer", help="printer name (default: manifest, else system default)")
+    ap.add_argument("--to-pdf", metavar="PATH",
+                    help="write the sized pages to one PDF instead of printing (no printer "
+                         "needed); a directory names the file for you")
     ap.add_argument("--from-pdf", help="use this local PDF instead of exporting from Drive")
     ap.add_argument("--manifest", default=None, help="path to manifest.json (overrides the default lookup)")
     ap.add_argument("--dry-run", action="store_true", help="print the lp commands, don't run them")
@@ -438,11 +455,25 @@ def main():
                 plan.append((p, v, title, count))
 
         scope = " ".join(x for x in (chosen_version, chosen_paper) if x) or "activation (all variants)"
-        print(f"Printing the board — {scope}{'  [dry run]' if args.dry_run else ''}\n")
+        if args.to_pdf:
+            slug = "-".join(x for x in (chosen_version, chosen_paper) if x) or "board"
+            export_pdf = Path(os.path.expanduser(args.to_pdf))
+            if export_pdf.is_dir() or args.to_pdf.endswith(("/", os.sep)):
+                export_pdf = export_pdf / f"printboard-{slug}.pdf"
+            if args.count is not None:
+                warn("--count is ignored with --to-pdf (one page per variant).")
+            verb = "Exporting"
+        else:
+            export_pdf = None
+            verb = "Printing"
+        print(f"{verb} the board — {scope}"
+              f"{f' → {export_pdf}' if export_pdf else ''}"
+              f"{'  [dry run]' if args.dry_run else ''}\n")
         if not plan:
-            die("nothing to print for that selection.")
+            die("nothing to export." if export_pdf else "nothing to print for that selection.")
 
         page_cache = {}
+        pdf_pages = []
         printed, skipped = 0, 0
         for p, v, title, count in plan:
             pid = p["id"]
@@ -466,13 +497,21 @@ def main():
                     continue
             orientation = p.get("orientation", default_orientation)
             size = p["size"]
-            label = f"{pid:<24} {v:<13} {size} {orientation:<9} ×{count}  p{page}  «{title}»"
+            count_col = "" if export_pdf else f"×{count}  "
+            label = f"{pid:<24} {v:<13} {size} {orientation:<9} {count_col}p{page}  «{title}»"
             if args.dry_run:
-                print(f"  {label}\n      gs: size page {page} → {size} {orientation};  "
-                      f"lp -n {count} -o media={size}")
+                action = (f"add 1 page to {export_pdf.name}" if export_pdf
+                          else f"gs: size page {page} → {size} {orientation};  "
+                               f"lp -n {count} -o media={size}")
+                print(f"  {label}\n      {action}")
                 printed += 1
                 continue
             sized = scale_page(pdf, page, size, orientation, tmp, safe_margin)
+            if export_pdf is not None:
+                pdf_pages.append(sized)               # one page per variant; --count doesn't apply
+                print(f"  ✓ {label}")
+                printed += 1
+                continue
             cmd = lp_command(sized, count, size, printer, lp_options)
             res = subprocess.run(cmd)
             print(f"  {'✓' if res.returncode == 0 else '✗'} {label}")
@@ -480,8 +519,14 @@ def main():
                 warn(f"{pid}: lp exited {res.returncode}")
             printed += 1
 
-        print(f"\n{printed} variant(s) {'planned' if args.dry_run else 'sent'}"
-              f"{f'; {skipped} skipped' if skipped else ''}.")
+        if export_pdf is not None and not args.dry_run and pdf_pages:
+            merge_pdfs(pdf_pages, export_pdf)
+            print(f"\n{printed} variant(s) exported to {export_pdf}"
+                  f"{f'; {skipped} skipped' if skipped else ''}.")
+        else:
+            print(f"\n{printed} variant(s) "
+                  f"{'planned' if args.dry_run else ('exported' if export_pdf else 'sent')}"
+                  f"{f'; {skipped} skipped' if skipped else ''}.")
         if skipped and not args.force:
             print("  (skipped variants need a unique, exact slide title — see the warnings above.)")
     finally:
