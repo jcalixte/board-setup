@@ -113,6 +113,22 @@ Then a no-print check of the live deck:
 printboard generic --dry-run
 ```
 
+## Install (for non-developers)
+
+One line, pasted into **Terminal** (⌘-Space → "Terminal"). It installs Homebrew
+if you don't have it, then printboard and everything it needs:
+
+```sh
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/jcalixte/board-setup/main/install.sh)"
+```
+
+Then the two one-time steps it prints — a browser sign-in to the deck:
+
+```sh
+printboard setup --deck "<paste the Google Slides deck URL>"
+printboard doctor        # checks deps, auth, and that the deck exports
+```
+
 ## Install (Homebrew)
 
 ```sh
