@@ -19,6 +19,7 @@ printboard generic tech-working-conditions   # one paper, one variant (e.g. repr
 printboard with-examples              # only the worked-example references — ×1 each
 printboard generic --count 3          # override copies
 printboard --printer _4e_etage
+printboard generic --to-pdf ~/Downloads/board.pdf   # export a PDF instead of printing
 
 printboard --list-titles              # debug: show page → title for the live deck
 printboard --dry-run                  # show the lp commands without printing
@@ -35,6 +36,10 @@ printboard doctor                     # check deps, auth, and that the deck expo
   (per run) → `"printer"` in `~/.config/printboard/config.json` (persistent, printboard
   only) → `print.printer` in the manifest → the system default `lp` uses (set it with
   `lpoptions -d <printer>`). `printboard doctor` shows the one in effect.
+- **`--to-pdf <path>`** writes the selected papers to one PDF instead of sending them to a
+  printer — **one page per variant**, each sized to its A3/A4. No printer needed, and
+  `--count` doesn't apply (a PDF is a master; set copies when you print it). Point it at a
+  directory to auto-name the file.
 
 ## The deck ↔ tool contract
 
