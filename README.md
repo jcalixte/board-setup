@@ -23,6 +23,7 @@ printboard generic --to-pdf ~/Downloads/board.pdf   # export a PDF instead of pr
 
 printboard --list-titles              # debug: show page → title for the live deck
 printboard --dry-run                  # show the lp commands without printing
+printboard printer                    # pick the default printer from a menu (A3/A4 shown)
 printboard setup                      # one-time: authorise rclone (read-only Drive)
 printboard doctor                     # check deps, auth, and that the deck exports
 ```
@@ -36,6 +37,10 @@ printboard doctor                     # check deps, auth, and that the deck expo
   (per run) → `"printer"` in `~/.config/printboard/config.json` (persistent, printboard
   only) → `print.printer` in the manifest → the system default `lp` uses (set it with
   `lpoptions -d <printer>`). `printboard doctor` shows the one in effect.
+- **`printboard printer`** is the easy way to set the persistent one: it lists every
+  printer with its friendly name and whether it does **A3+A4**, and saves your pick to
+  the config above. `printboard printer <name>` sets one directly; `--list` just shows
+  them; `--unset` reverts to the system default.
 - **`--to-pdf <path>`** writes the selected papers to one PDF instead of sending them to a
   printer — **one page per variant**, each sized to its A3/A4. No printer needed, and
   `--count` doesn't apply (a PDF is a master; set copies when you print it). Point it at a
