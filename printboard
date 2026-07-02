@@ -59,6 +59,11 @@ def load_config() -> dict:
         die(f"{CONFIG_PATH} is not valid JSON.")
 
 
+def save_config(cfg: dict) -> None:
+    CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    CONFIG_PATH.write_text(json.dumps(cfg, indent=2) + "\n")
+
+
 def effective_deck(manifest: dict, config: dict) -> dict:
     """Deck identity comes from local config (the doc_id is private); the manifest
     only carries a default remote name."""
@@ -276,6 +281,134 @@ def merge_pdfs(pages: list[Path], dest: Path) -> None:
         die(f"ghostscript failed to write {dest}: {res.stderr.strip()[:200]}")
 
 
+# ---------- choosing a printer ----------
+
+def _lpoptions(name: str, extra: list[str] = ()) -> str:
+    return subprocess.run(["lpoptions", "-p", name, *extra],
+                          capture_output=True, text=True).stdout
+
+
+def _opt_value(blob: str, key: str) -> str | None:
+    """Pull key=value out of `lpoptions -p` output; values may be 'single-quoted'."""
+    m = re.search(rf"(?:^|\s){re.escape(key)}=('([^']*)'|(\S+))", blob)
+    if not m:
+        return None
+    return m.group(2) if m.group(2) is not None else m.group(3)
+
+
+def _media_support(name: str) -> tuple[bool, bool]:
+    """(a3, a4) — does the printer offer A3 / A4 media?"""
+    for line in _lpoptions(name, ["-l"]).splitlines():
+        key = line.split("/", 1)[0].strip().lower()
+        if key in ("pagesize", "media", "mediasize", "pageregion"):
+            vals = line.split(":", 1)[1] if ":" in line else ""
+            return bool(re.search(r"\bA3\b", vals)), bool(re.search(r"\bA4\b", vals))
+    return False, False
+
+
+def list_printers() -> list[dict]:
+    """[{name, info, model, a3, a4}] for every configured CUPS destination."""
+    if not (shutil.which("lpstat") and shutil.which("lpoptions")):
+        die("lpstat/lpoptions not found — CUPS ships with macOS.")
+    names = [ln.strip() for ln in
+             subprocess.run(["lpstat", "-e"], capture_output=True, text=True).stdout.splitlines()
+             if ln.strip()]
+    printers = []
+    for n in names:
+        blob = _lpoptions(n)
+        a3, a4 = _media_support(n)
+        printers.append({"name": n, "info": _opt_value(blob, "printer-info") or n,
+                         "model": _opt_value(blob, "printer-make-and-model") or "",
+                         "a3": a3, "a4": a4})
+    return printers
+
+
+def current_printer(config: dict, manifest: dict) -> tuple[str | None, str]:
+    """Resolve the printer printboard would use right now, and where it came from."""
+    if config.get("printer"):
+        return config["printer"], "printboard config"
+    if manifest.get("print", {}).get("printer"):
+        return manifest["print"]["printer"], "manifest"
+    txt = subprocess.run(["lpstat", "-d"], capture_output=True, text=True).stdout.strip()
+    name = txt.rsplit(":", 1)[1].strip() if ":" in txt else ""   # localized prefix, name after ':'
+    return (name, "system default") if name else (None, "none")
+
+
+def _save_printer(config: dict, printers: list[dict], name: str) -> int:
+    p = next((x for x in printers if x["name"] == name), None)
+    config["printer"] = name
+    save_config(config)
+    label = f" ({p['info']})" if p and p["info"] != name else ""
+    print(f"✓ printboard will print to '{name}'{label}.")
+    if p and not p["a3"]:
+        warn(f"{name} doesn't advertise A3 — the board's A3 papers may print wrong. "
+             "Choose an A3-capable printer if you print those.")
+    return 0
+
+
+def cmd_printer(argv: list[str]) -> int:
+    """Show, choose, or clear the printer printboard prints to (saved in local config)."""
+    ap = argparse.ArgumentParser(
+        prog="printboard printer",
+        description="Choose the default printer printboard sends to (saved in your local config, "
+                    "printboard only). No name → an interactive menu.")
+    ap.add_argument("name", nargs="?", help="printer queue name to set (omit for the menu)")
+    ap.add_argument("--manifest", default=None)
+    ap.add_argument("--list", action="store_true", help="just list printers, change nothing")
+    ap.add_argument("--unset", action="store_true",
+                    help="forget the saved printer (fall back to the system default)")
+    args = ap.parse_args(argv)
+
+    manifest = json.loads(resolve_manifest(args.manifest).read_text())
+    config = load_config()
+
+    if args.unset:
+        if config.pop("printer", None) is None:
+            print("No printboard printer was set — nothing to unset.")
+        else:
+            save_config(config)
+            print("✓ Unset — printboard will use the system default (set with `lpoptions -d`).")
+        return 0
+
+    printers = list_printers()
+    if not printers:
+        die("no printers configured on this Mac (add one in System Settings → Printers).")
+    cur, src = current_printer(config, manifest)
+
+    if args.name:
+        if args.name not in {p["name"] for p in printers}:
+            die(f"unknown printer '{args.name}'. Run `printboard printer --list` to see the names.")
+        return _save_printer(config, printers, args.name)
+
+    print(f"Current printer: {cur or '(none)'}  [{src}]\n")
+    print("Available printers  (the board needs A3 for its A3 papers):\n")
+    for i, p in enumerate(printers, 1):
+        badge = ("A3+A4" if p["a3"] and p["a4"] else
+                 "A4 only" if p["a4"] else "A3 only" if p["a3"] else "?")
+        mark = "  ← current" if p["name"] == cur else ""
+        model = f"  {p['model']}" if p["model"] else ""
+        print(f"  {i:>2}. [{badge:<7}]  {p['info']:<30} {p['name']}{model}{mark}")
+
+    if args.list:
+        return 0
+    if not sys.stdin.isatty():
+        print("\nNot a terminal — set one with:  printboard printer <name>")
+        return 0
+
+    choice = input("\nSelect a number (Enter = keep current, u = unset): ").strip()
+    if not choice:
+        print("Kept current.")
+        return 0
+    if choice.lower() == "u":
+        config.pop("printer", None)
+        save_config(config)
+        print("✓ Unset — printboard will use the system default.")
+        return 0
+    if not (choice.isdigit() and 1 <= int(choice) <= len(printers)):
+        die("not a valid selection.")
+    return _save_printer(config, printers, printers[int(choice) - 1]["name"])
+
+
 def cmd_doctor(argv: list[str]) -> int:
     """Check the environment can export the deck and print."""
     ap = argparse.ArgumentParser(prog="printboard doctor")
@@ -358,8 +491,7 @@ def cmd_setup(argv: list[str]) -> int:
     cfg = load_config()
     cfg["doc_id"] = doc_id
     cfg.setdefault("rclone_remote", remote)
-    CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    CONFIG_PATH.write_text(json.dumps(cfg, indent=2) + "\n")
+    save_config(cfg)
     print(f"\n✓ remote configured and deck id saved to {CONFIG_PATH}. Verifying…\n")
     return cmd_doctor(["--manifest", args.manifest] if args.manifest else [])
 
@@ -370,11 +502,15 @@ def main():
         sys.exit(cmd_setup(argv[1:]))
     if argv and argv[0] == "doctor":
         sys.exit(cmd_doctor(argv[1:]))
+    if argv and argv[0] == "printer":
+        sys.exit(cmd_printer(argv[1:]))
 
     ap = argparse.ArgumentParser(
         prog="printboard", add_help=True,
-        description="Print the Enabler board's papers (also: `printboard setup`, `printboard doctor`).",
-        epilog="setup: configure rclone auth.  doctor: check deps + deck export.")
+        description="Print the Enabler board's papers "
+                    "(also: `printboard setup`, `printboard printer`, `printboard doctor`).",
+        epilog="setup: configure rclone auth.  printer: choose the default printer.  "
+               "doctor: check deps + deck export.")
     ap.add_argument("selectors", nargs="*",
                     help="optional version and/or paper id (e.g. `generic`, "
                          "`tech-working-conditions`, or both). No version → all variants (activation).")
