@@ -5,8 +5,8 @@
 class Printboard < Formula
   desc "Print the Enabler project board's papers at the right size, count, and version"
   homepage "https://github.com/jcalixte/board-setup"
-  url "https://github.com/jcalixte/board-setup/archive/refs/tags/v1.2.0.tar.gz"
-  sha256 "1712e029e2a90ab0b17f8c060d71dc983cc0db3adca4bf7bbdcb40aa79af3752"
+  url "https://github.com/jcalixte/board-setup/archive/refs/tags/v1.2.1.tar.gz"
+  sha256 "24e247f2fd062bc5fed2935506329228b818ad44dad7f472f617bb1328c2425a"
   license "MIT"
 
   depends_on "ghostscript"    # gs — scale each page to its exact A3/A4 size before printing
