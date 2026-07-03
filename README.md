@@ -15,9 +15,9 @@ See [`CONTEXT.md`](./CONTEXT.md) for the vocabulary and the decisions behind thi
 ```sh
 printboard                            # ACTIVATION: every variant of every paper, at its count
 printboard generic                    # only the generic (blank) variants — ×5 each
-printboard generic tech-working-conditions   # one paper, one variant (e.g. reprint blanks)
+printboard generic tech-working-conditions   # one paper, one variant — 1 copy (quick reprint)
 printboard with-examples              # only the worked-example references — ×1 each
-printboard generic --count 3          # override copies
+printboard generic takt --count 5     # a named paper, but this many copies
 printboard --printer _4e_etage
 printboard generic --to-pdf ~/Downloads/board.pdf   # export a PDF instead of printing
 
@@ -32,6 +32,9 @@ printboard doctor                     # check deps, auth, and that the deck expo
   (`with-examples` ×1, `template` ×1, `generic` ×5). Add a version to filter
   (`printboard generic`) and/or a paper id to target one (`printboard generic questionnaire`).
   Order doesn't matter — each token is recognised as a version or a paper.
+- **Naming a paper prints 1 copy.** `version_counts` are board-activation quantities, so a
+  single-paper request (e.g. `printboard dantotsu`) is treated as a quick reprint and defaults
+  to 1 — not the activation count. Use `--count N` when you do want more.
 - Versions are **`with-examples`**, **`template`**, **`generic`** — read from the slide title.
 - The **printer** (must support A3 + A4) is resolved in this order: `--printer <name>`
   (per run) → `"printer"` in `~/.config/printboard/config.json` (persistent, printboard
