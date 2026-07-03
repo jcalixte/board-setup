@@ -7,7 +7,8 @@ and send it to the printer at the size and number of copies declared in manifest
 
   printboard first-time            # whole board, first-time variant where it exists
   printboard generic               # whole board, generic variant
-  printboard generic tech-working-conditions   # just one paper
+  printboard generic tech-working-conditions   # just one paper (a named paper prints 1 copy)
+  printboard generic takt --count 5             # a named paper, but this many copies
   printboard first-time --count 3 --dry-run
   printboard generic --to-pdf "~/Downloads/board.pdf"    # export a PDF instead of printing
   printboard generic --from-pdf "~/Downloads/deck.pdf"   # skip export, use a local PDF
@@ -545,7 +546,8 @@ def main():
     ap.add_argument("selectors", nargs="*",
                     help="optional version and/or paper id (e.g. `generic`, "
                          "`tech-working-conditions`, or both). No version → all variants (activation).")
-    ap.add_argument("--count", type=int, help="override copies for the selected variant(s)")
+    ap.add_argument("--count", type=int,
+                    help="override copies (a named paper defaults to 1; activation uses version_counts)")
     ap.add_argument("--printer", help="printer name (default: manifest, else system default)")
     ap.add_argument("--to-pdf", metavar="PATH",
                     help="write the sized pages to one PDF instead of printing (no printer "
@@ -614,11 +616,20 @@ def main():
                         warn(f"{p['id']}: no '{v}' variant — skipped.")
                     continue
                 if isinstance(spec, dict):
-                    title, count = spec.get("title"), spec.get("count", version_counts.get(v, 1))
+                    title, per_variant = spec.get("title"), spec.get("count")
                 else:
-                    title, count = spec, version_counts.get(v, 1)
+                    title, per_variant = spec, None
+                # version_counts are per-board-activation quantities. Naming a specific
+                # paper is a quick single reprint, so it defaults to 1 — otherwise the
+                # activation counts (e.g. generic ×5) silently apply to a one-off print.
                 if args.count is not None:
                     count = args.count
+                elif per_variant is not None:
+                    count = per_variant
+                elif chosen_paper is not None:
+                    count = 1
+                else:
+                    count = version_counts.get(v, 1)
                 plan.append((p, v, title, count))
 
         scope = " ".join(x for x in (chosen_version, chosen_paper) if x) or "activation (all variants)"
