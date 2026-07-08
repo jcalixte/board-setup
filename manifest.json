@@ -46,6 +46,12 @@
       }
     },
     {
+      "id": "kanban",
+      "pillar": "Right-first-time and Just-in-time",
+      "size": "A3",
+      "variants": { "generic": { "title": "Kanban", "count": 1 } }
+    },
+    {
       "id": "tech-working-conditions",
       "pillar": "Tech-enabled Network of Teams",
       "size": "A3",

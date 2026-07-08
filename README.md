@@ -60,7 +60,7 @@ When you rework the deck, follow this so the tool can find each paper:
 3. A paper with several versions gets **one slide per version**, titled
    `<Paper> — <version>` — e.g. `Tech Working Conditions — with examples` and
    `Tech Working Conditions — generic`. The manifest maps each to its version. A
-   single-variant paper can keep a bare title (e.g. `Questionnaire`).
+   single-variant paper can keep a bare title (e.g. `Kanban`).
 4. Anything that isn't a paper (specs, materials, the "Printed paper needed" table)
    needs no change — it simply won't match.
 
