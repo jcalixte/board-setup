@@ -30,7 +30,7 @@ printboard doctor                     # check deps, auth, and that the deck expo
 
 - **No version → activation**: prints every variant of every paper at its version count
   (`with-examples` ×1, `template` ×1, `generic` ×5). Add a version to filter
-  (`printboard generic`) and/or a paper id to target one (`printboard generic questionnaire`).
+  (`printboard generic`) and/or a paper id to target one (`printboard generic product-radar`).
   Order doesn't matter — each token is recognised as a version or a paper.
 - **Naming a paper prints 1 copy.** `version_counts` are board-activation quantities, so a
   single-paper request (e.g. `printboard dantotsu`) is treated as a quick reprint and defaults
