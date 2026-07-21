@@ -5,16 +5,16 @@ The papers live as slides in one Google Slides deck (the source of truth others 
 On each run we export that deck to a single PDF, find each paper's slide *by its title*,
 and send it to the printer at the size and number of copies declared in manifest.json.
 
-  printboard first-time            # whole board, first-time variant where it exists
+  printboard                       # activation: every variant of every paper, at its count
   printboard generic               # whole board, generic variant
   printboard generic tech-working-conditions   # just one paper (a named paper prints 1 copy)
   printboard generic takt --count 5             # a named paper, but this many copies
-  printboard first-time --count 3 --dry-run
+  printboard generic --count 3 --dry-run
   printboard generic --to-pdf "~/Downloads/board.pdf"    # export a PDF instead of printing
   printboard generic --from-pdf "~/Downloads/deck.pdf"   # skip export, use a local PDF
   printboard --list-titles --from-pdf "~/Downloads/deck.pdf"   # debug: page -> title
 
-Version is required and never guessed (single-version papers print in either mode).
+Versions are with-examples / template / generic, read from the slide title (never guessed).
 """
 from __future__ import annotations
 
@@ -539,19 +539,37 @@ def main():
 
     ap = argparse.ArgumentParser(
         prog="printboard", add_help=True,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
         description="Print the Enabler board's papers "
                     "(also: `printboard setup`, `printboard printer`, `printboard doctor`).",
-        epilog="setup: configure rclone auth.  printer: choose the default printer.  "
-               "doctor: check deps + deck export.")
+        epilog=(
+            "examples:\n"
+            "  printboard                                   # activation: every variant, at its count\n"
+            "  printboard generic                           # only generic variants (×5 each)\n"
+            "  printboard generic tech-working-conditions   # one paper, one variant — 1 copy\n"
+            "  printboard generic takt --count 5            # a named paper, this many copies\n"
+            "  printboard generic --to-pdf ~/Downloads/board.pdf   # export a PDF, don't print\n"
+            "  printboard generic --to-pdf ~/Downloads/     # a directory → auto-named file\n"
+            "  printboard --dry-run                         # show the lp commands, don't run them\n"
+            "\n"
+            "--to-pdf writes one page per variant (a master PDF); --count is ignored —\n"
+            "set copies when you print it.\n"
+            "\n"
+            "subcommands:\n"
+            "  setup     configure rclone auth\n"
+            "  printer   choose the default printer\n"
+            "  doctor    check deps + deck export"))
     ap.add_argument("selectors", nargs="*",
                     help="optional version and/or paper id (e.g. `generic`, "
                          "`tech-working-conditions`, or both). No version → all variants (activation).")
     ap.add_argument("--count", type=int,
-                    help="override copies (a named paper defaults to 1; activation uses version_counts)")
+                    help="override copies (a named paper defaults to 1; activation uses "
+                         "version_counts). Ignored with --to-pdf")
     ap.add_argument("--printer", help="printer name (default: manifest, else system default)")
     ap.add_argument("--to-pdf", metavar="PATH",
                     help="write the sized pages to one PDF instead of printing (no printer "
-                         "needed); a directory names the file for you")
+                         "needed) — one page per variant, --count ignored; a directory names "
+                         "the file for you")
     ap.add_argument("--from-pdf", help="use this local PDF instead of exporting from Drive")
     ap.add_argument("--manifest", default=None, help="path to manifest.json (overrides the default lookup)")
     ap.add_argument("--dry-run", action="store_true", help="print the lp commands, don't run them")
