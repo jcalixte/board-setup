@@ -2,6 +2,7 @@
 # (jcalixte/homebrew-tap → Formula/printboard.rb), which is the source of truth
 # behind `brew install jcalixte/tap/printboard`. When cutting a release: tag the
 # repo, bump `url`/`sha256` to the new tag here AND in the tap, then push both.
+# This whole dance is automated by ./release.sh <version>.
 class Printboard < Formula
   desc "Print the Enabler project board's papers at the right size, count, and version"
   homepage "https://github.com/jcalixte/board-setup"

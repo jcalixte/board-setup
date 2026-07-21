@@ -148,6 +148,8 @@ printboard doctor        # checks deps, auth, and that the deck exports
 brew install jcalixte/tap/printboard
 ```
 
-The formula lives in [`printboard.rb`](./printboard.rb); copy it to
-`jcalixte/homebrew-tap` → `Formula/printboard.rb` once this repo is published and
-tagged.
+The formula lives in [`printboard.rb`](./printboard.rb) and is mirrored to
+`jcalixte/homebrew-tap` → `Formula/printboard.rb`. Cutting a release is automated:
+commit and push the change, then run [`./release.sh <version>`](./release.sh)
+(e.g. `./release.sh 1.4.2`) — it tags the repo, hashes the tarball, and bumps
+`url`/`sha256` in both formulas. See the script header for details.

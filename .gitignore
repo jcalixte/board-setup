@@ -4,3 +4,6 @@ CONTEXT.md
 __pycache__/
 *.pyc
 .DS_Store
+
+# Personal Claude Code settings (push-granting permissions stay local)
+.claude/settings.local.json
