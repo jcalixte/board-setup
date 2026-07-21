@@ -652,6 +652,8 @@ def main():
 
         page_cache = {}
         pdf_pages = []
+        groups = {}       # (size, orientation) -> [sized page paths]  (print path, count baked in)
+        dry_groups = {}   # (size, orientation) -> total sheets        (dry-run preview)
         printed, skipped = 0, 0
         for p, v, title, count in plan:
             pid = p["id"]
@@ -680,8 +682,10 @@ def main():
             if args.dry_run:
                 action = (f"add 1 page to {export_pdf.name}" if export_pdf
                           else f"gs: size page {page} → {size} {orientation};  "
-                               f"lp -n {count} -o media={size}")
+                               f"joins {size} {orientation} batch (×{count})")
                 print(f"  {label}\n      {action}")
+                if export_pdf is None:
+                    dry_groups[(size, orientation)] = dry_groups.get((size, orientation), 0) + count
                 printed += 1
                 continue
             sized = scale_page(pdf, page, size, orientation, tmp, safe_margin)
@@ -690,20 +694,45 @@ def main():
                 print(f"  ✓ {label}")
                 printed += 1
                 continue
-            cmd = lp_command(sized, count, size, printer, lp_options)
-            res = subprocess.run(cmd)
-            print(f"  {'✓' if res.returncode == 0 else '✗'} {label}")
-            if res.returncode != 0:
-                warn(f"{pid}: lp exited {res.returncode}")
+            # Batch by (size, orientation): repeat each page `count` times so the whole
+            # group prints in one `lp -n 1` job (fewer jobs → faster) with identical order.
+            groups.setdefault((size, orientation), []).extend([sized] * count)
+            print(f"  ✓ {label}")
             printed += 1
+
+        jobs = 0
+        if args.dry_run and export_pdf is None and dry_groups:
+            print()
+            for (gsize, gorient), sheets in dry_groups.items():
+                print(f"  → lp -n 1 -o media={gsize}: {sheets} sheet(s) in 1 job "
+                      f"({gsize} {gorient})")
+            jobs = len(dry_groups)
+        elif export_pdf is None and not args.dry_run and groups:
+            print()
+            for (gsize, gorient), sized_pages in groups.items():
+                if len(sized_pages) == 1:
+                    doc = sized_pages[0]
+                else:
+                    doc = tmp / f"group-{gsize}-{gorient}.pdf"
+                    merge_pdfs(sized_pages, doc)
+                cmd = lp_command(doc, 1, gsize, printer, lp_options)
+                res = subprocess.run(cmd)
+                ok = res.returncode == 0
+                print(f"  {'✓' if ok else '✗'} lp {gsize} {gorient}: "
+                      f"{len(sized_pages)} sheet(s) in 1 job")
+                if not ok:
+                    warn(f"{gsize} {gorient}: lp exited {res.returncode}")
+                jobs += 1
 
         if export_pdf is not None and not args.dry_run and pdf_pages:
             merge_pdfs(pdf_pages, export_pdf)
             print(f"\n{printed} variant(s) exported to {export_pdf}"
                   f"{f'; {skipped} skipped' if skipped else ''}.")
         else:
+            job_col = f" in {jobs} job(s)" if export_pdf is None and jobs else ""
             print(f"\n{printed} variant(s) "
                   f"{'planned' if args.dry_run else ('exported' if export_pdf else 'sent')}"
+                  f"{job_col}"
                   f"{f'; {skipped} skipped' if skipped else ''}.")
         if skipped and not args.force:
             print("  (skipped variants need a unique, exact slide title — see the warnings above.)")
