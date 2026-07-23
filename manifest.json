@@ -61,10 +61,22 @@
       }
     },
     {
-      "id": "dantotsu",
+      "id": "dantotsu-1",
       "pillar": "Building a Learning Organization",
       "size": "A3",
-      "variants": { "generic": "Dantotsu and Problem Solving" }
+      "variants": { "generic": { "title": "Dantotsu and Problem solving 1", "count": 2 } }
+    },
+    {
+      "id": "dantotsu-2",
+      "pillar": "Building a Learning Organization",
+      "size": "A3",
+      "variants": { "generic": { "title": "Dantotsu and Problem solving 2", "count": 2 } }
+    },
+    {
+      "id": "dantotsu-3",
+      "pillar": "Building a Learning Organization",
+      "size": "A3",
+      "variants": { "generic": { "title": "Dantotsu and Problem solving 3", "count": 3 } }
     },
     {
       "id": "weak-point-management",
