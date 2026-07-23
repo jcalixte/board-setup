@@ -637,15 +637,16 @@ def main():
                     title, per_variant = spec.get("title"), spec.get("count")
                 else:
                     title, per_variant = spec, None
-                # version_counts are per-board-activation quantities. Naming a specific
-                # paper is a quick single reprint, so it defaults to 1 — otherwise the
-                # activation counts (e.g. generic ×5) silently apply to a one-off print.
+                # version_counts and per-variant counts are per-board-activation
+                # quantities. Naming a specific paper is a quick single reprint, so it
+                # defaults to 1 (overriding both) — otherwise the activation counts
+                # (e.g. generic ×5, or a variant's own ×3) silently apply to a one-off.
                 if args.count is not None:
                     count = args.count
-                elif per_variant is not None:
-                    count = per_variant
                 elif chosen_paper is not None:
                     count = 1
+                elif per_variant is not None:
+                    count = per_variant
                 else:
                     count = version_counts.get(v, 1)
                 plan.append((p, v, title, count))

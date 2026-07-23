@@ -32,9 +32,10 @@ printboard doctor                     # check deps, auth, and that the deck expo
   (`with-examples` ×1, `template` ×1, `generic` ×5). Add a version to filter
   (`printboard generic`) and/or a paper id to target one (`printboard generic product-radar`).
   Order doesn't matter — each token is recognised as a version or a paper.
-- **Naming a paper prints 1 copy.** `version_counts` are board-activation quantities, so a
-  single-paper request (e.g. `printboard dantotsu`) is treated as a quick reprint and defaults
-  to 1 — not the activation count. Use `--count N` when you do want more.
+- **Naming a paper prints 1 copy.** `version_counts` and per-variant counts are
+  board-activation quantities, so a single-paper request (e.g. `printboard dantotsu-2`)
+  is treated as a quick reprint and defaults to 1 — not the activation count. Use `--count N`
+  when you do want more.
 - Versions are **`with-examples`**, **`template`**, **`generic`** — read from the slide title.
 - The **printer** (must support A3 + A4) is resolved in this order: `--printer <name>`
   (per run) → `"printer"` in `~/.config/printboard/config.json` (persistent, printboard
