@@ -638,7 +638,8 @@ def main():
                 spec = variants.get(v)
                 if not spec:
                     if chosen_version:
-                        warn(f"{p['id']}: no '{v}' variant — skipped.")
+                        have = ", ".join(variants) or "none"
+                        warn(f"{p['id']}: no '{v}' variant (has: {have}) — skipped.")
                     continue
                 if isinstance(spec, dict):
                     title, per_variant = spec.get("title"), spec.get("count")
