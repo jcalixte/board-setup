@@ -555,13 +555,20 @@ def main():
             "--to-pdf writes one page per variant (a master PDF); --count is ignored —\n"
             "set copies when you print it.\n"
             "\n"
+            "versions (pass one as a selector; read from each slide's title):\n"
+            "  with-examples  worked examples filled in — a reference   (×1)\n"
+            "  template       a blank to set the board up               (×1)\n"
+            "  generic        plain/blank, more room to write on        (×5)\n"
+            "a paper may have one or more; no version prints them all (activation).\n"
+            "\n"
             "subcommands:\n"
             "  setup     configure rclone auth\n"
             "  printer   choose the default printer\n"
             "  doctor    check deps + deck export"))
     ap.add_argument("selectors", nargs="*",
-                    help="optional version and/or paper id (e.g. `generic`, "
-                         "`tech-working-conditions`, or both). No version → all variants (activation).")
+                    help="a version (with-examples, template, generic) and/or a paper id "
+                         "(e.g. `tech-working-conditions`). No version → all variants (activation). "
+                         "See 'versions' below.")
     ap.add_argument("--count", type=int,
                     help="override copies (a named paper defaults to 1; activation uses "
                          "version_counts). Ignored with --to-pdf")
