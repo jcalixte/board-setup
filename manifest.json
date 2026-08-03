@@ -6,7 +6,7 @@
     "printer": null,
     "orientation": "landscape",
     "safe_margin_mm": 0,
-    "version_counts": { "with-examples": 1, "template": 1, "generic": 5 },
+    "version_counts": { "baseline": 5, "with-examples": 1, "template": 1, "generic": 5 },
     "lp_options": ["sides=one-sided"]
   },
   "papers": [
@@ -56,6 +56,7 @@
       "pillar": "Tech-enabled Network of Teams",
       "size": "A3",
       "variants": {
+        "baseline": "Tech Working Conditions — with baselines",
         "with-examples": "Tech Working Conditions — with examples",
         "generic": "Tech Working Conditions"
       }

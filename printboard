@@ -14,7 +14,9 @@ and send it to the printer at the size and number of copies declared in manifest
   printboard generic --from-pdf "~/Downloads/deck.pdf"   # skip export, use a local PDF
   printboard --list-titles --from-pdf "~/Downloads/deck.pdf"   # debug: page -> title
 
-Versions are with-examples / template / generic, read from the slide title (never guessed).
+Versions are baseline / with-examples / template / generic, read from the slide title
+(never guessed). A baseline (real data to compare against) supersedes both with-examples
+and generic on activation — print only the baseline, ×5.
 """
 from __future__ import annotations
 
@@ -556,17 +558,19 @@ def main():
             "set copies when you print it.\n"
             "\n"
             "versions (pass one as a selector; read from each slide's title):\n"
+            "  baseline       real data points to compare against       (×5)\n"
             "  with-examples  worked examples filled in — a reference   (×1)\n"
             "  template       a blank to set the board up               (×1)\n"
             "  generic        plain/blank, more room to write on        (×5)\n"
-            "a paper may have one or more; no version prints them all (activation).\n"
+            "a paper may have one or more; no version prints them all (activation) —\n"
+            "except a baseline supersedes with-examples and generic on the same paper.\n"
             "\n"
             "subcommands:\n"
             "  setup     configure rclone auth\n"
             "  printer   choose the default printer\n"
             "  doctor    check deps + deck export"))
     ap.add_argument("selectors", nargs="*",
-                    help="a version (with-examples, template, generic) and/or a paper id "
+                    help="a version (baseline, with-examples, template, generic) and/or a paper id "
                          "(e.g. `tech-working-conditions`). No version → all variants (activation). "
                          "See 'versions' below.")
     ap.add_argument("--count", type=int,
@@ -634,7 +638,17 @@ def main():
         plan = []
         for p in selected_papers:
             variants = p.get("variants", {})
-            for v in ([chosen_version] if chosen_version else list(variants)):
+            if chosen_version:
+                wanted = [chosen_version]
+            else:
+                # Activation prints every variant, except: a baseline holds real data
+                # points to compare against, so when a paper has one it stands in for
+                # the working sheets — print only the baseline (at ×5), suppressing both
+                # the fictional with-examples reference and the blank generic sheets.
+                wanted = list(variants)
+                if "baseline" in variants:
+                    wanted = [v for v in wanted if v not in ("with-examples", "generic")]
+            for v in wanted:
                 spec = variants.get(v)
                 if not spec:
                     if chosen_version:
