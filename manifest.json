@@ -15,7 +15,7 @@
       "pillar": "Value for the Customer",
       "size": "A4",
       "variants": {
-        "template": "Questionnaire — template"
+        "generic": "Questionnaire"
       }
     },
     {
@@ -28,12 +28,12 @@
       }
     },
     {
-      "id": "takt",
+      "id": "project-takt",
       "pillar": "Right-first-time and Just-in-time",
       "size": "A4",
       "variants": {
-        "template": "Takt — template",
-        "generic": "Takt"
+        "template": { "title": "Project Takt — template", "activation": false },
+        "generic": "Project Takt"
       }
     },
     {
@@ -56,9 +56,8 @@
       "pillar": "Tech-enabled Network of Teams",
       "size": "A3",
       "variants": {
-        "baseline": "Tech Working Conditions — with baselines",
-        "with-examples": "Tech Working Conditions — with examples",
-        "generic": "Tech Working Conditions"
+        "baseline": "Tech Working Conditions",
+        "with-examples": "Tech Working Conditions — with examples"
       }
     },
     {

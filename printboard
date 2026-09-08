@@ -8,7 +8,7 @@ and send it to the printer at the size and number of copies declared in manifest
   printboard                       # activation: every variant of every paper, at its count
   printboard generic               # whole board, generic variant
   printboard generic tech-working-conditions   # just one paper (a named paper prints 1 copy)
-  printboard generic takt --count 5             # a named paper, but this many copies
+  printboard generic project-takt --count 5     # a named paper, but this many copies
   printboard generic --count 3 --dry-run
   printboard generic --to-pdf "~/Downloads/board.pdf"    # export a PDF instead of printing
   printboard generic --from-pdf "~/Downloads/deck.pdf"   # skip export, use a local PDF
@@ -549,7 +549,7 @@ def main():
             "  printboard                                   # activation: every variant, at its count\n"
             "  printboard generic                           # only generic variants (×5 each)\n"
             "  printboard generic tech-working-conditions   # one paper, one variant — 1 copy\n"
-            "  printboard generic takt --count 5            # a named paper, this many copies\n"
+            "  printboard generic project-takt --count 5    # a named paper, this many copies\n"
             "  printboard generic --to-pdf ~/Downloads/board.pdf   # export a PDF, don't print\n"
             "  printboard generic --to-pdf ~/Downloads/     # a directory → auto-named file\n"
             "  printboard --dry-run                         # show the lp commands, don't run them\n"

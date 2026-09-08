@@ -17,7 +17,7 @@ printboard                            # ACTIVATION: every variant of every paper
 printboard generic                    # only the generic (blank) variants — ×5 each
 printboard generic tech-working-conditions   # one paper, one variant — 1 copy (quick reprint)
 printboard with-examples              # only the worked-example references — ×1 each
-printboard generic takt --count 5     # a named paper, but this many copies
+printboard generic project-takt --count 5   # a named paper, but this many copies
 printboard --printer _4e_etage
 printboard generic --to-pdf ~/Downloads/board.pdf   # export a PDF instead of printing
 
@@ -61,7 +61,7 @@ When you rework the deck, follow this so the tool can find each paper:
 3. A paper with several versions gets **one slide per version**, titled
    `<Paper> — <version>` — e.g. `Tech Working Conditions — with examples` and
    `Tech Working Conditions — generic`. The manifest maps each to its version. A
-   single-variant paper can keep a bare title (e.g. `Kanban`).
+   single-variant paper can keep a bare title (e.g. `Weak Point Management`).
 4. Anything that isn't a paper (specs, materials, the "Printed paper needed" table)
    needs no change — it simply won't match.
 
