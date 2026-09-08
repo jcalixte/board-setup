@@ -563,7 +563,8 @@ def main():
             "  template       a blank to set the board up               (×1)\n"
             "  generic        plain/blank, more room to write on        (×5)\n"
             "a paper may have one or more; no version prints them all (activation) —\n"
-            "except a baseline supersedes with-examples and generic on the same paper.\n"
+            "except a baseline supersedes with-examples and generic on the same paper,\n"
+            "and a variant the manifest marks \"activation\": false is left out.\n"
             "\n"
             "subcommands:\n"
             "  setup     configure rclone auth\n"
@@ -645,7 +646,11 @@ def main():
                 # points to compare against, so when a paper has one it stands in for
                 # the working sheets — print only the baseline (at ×5), suppressing both
                 # the fictional with-examples reference and the blank generic sheets.
-                wanted = list(variants)
+                # A variant marked "activation": false is off the activation set —
+                # it stays printable by naming it (`printboard template project-takt`).
+                wanted = [v for v in variants
+                          if not (isinstance(variants[v], dict)
+                                  and variants[v].get("activation") is False)]
                 if "baseline" in variants:
                     wanted = [v for v in wanted if v not in ("with-examples", "generic")]
             for v in wanted:

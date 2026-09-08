@@ -90,7 +90,9 @@ titles, and pillar per paper:
 ```
 
 Counts come from `version_counts`; override one variant with an object:
-`"generic": { "title": "…", "count": 3 }`. A variant whose title is the bare paper
+`"generic": { "title": "…", "count": 3 }`. The same object form takes
+`"activation": false` to keep a variant out of the activation set — it no longer prints
+when you run bare `printboard`, but still prints when you name it. A variant whose title is the bare paper
 name matches the unlabelled (blank) slide — the tool gives each contested page to the
 most specific title, so `… - template` wins its slide and the bare one falls to generic.
 
